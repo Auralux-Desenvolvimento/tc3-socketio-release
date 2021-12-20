@@ -1,0 +1,407 @@
+asyncapi: 2.1.0
+info:
+  title: tc3-socket
+  version: 1.0
+
+components:
+  securitySchemas:
+    JWT:
+      type: apiKey
+      name: token
+      in: user
+  
+  schemas:
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        chatId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        connected:
+          type: boolean
+        logo:
+          type: string
+          format: url
+        status:
+          type: string
+          description: 'Will describe the chat status: If it is active or not, and if not, why.'
+          enum:
+            - active
+            - banned
+            - inAgreement
+            - inactive
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageSubscribe'
+        agreement:
+          type: object
+          properties:
+            agent:
+              type: string
+              format: uuid
+              describe: The uuid of the user who took the initiative to show interest
+            status:
+              type: string
+              description: Describes if the team and the user are in an agreement
+              enum:
+                - pending
+                - rejected
+                - cancelled
+                - active
+        lastSeen: 
+          type: string
+          format: ISO 8601 Date
+          description: The date this user's last appearance
+      required: [ id, name, connected, logo, status, messages, lastSeen ]
+      example:
+        id: 023da34e-f159-4201-a618-7ce54b3803cb
+        name: Kepler
+        connected: true
+        logo: https://avatars.githubusercontent.com/u/80424909?s=400&u=25631fde040e06b385b8821ee79618c774b3c85d&v=4
+        status: active
+        messages: 
+          - from: fdf73a6e-dac9-4b7c-a17e-e5025665f5ac
+            content: Lorem ipsum.
+            createdAt: 2021-07-20T17:03:00.000Z
+          - from: 023da34e-f159-4201-a618-7ce54b3803cb
+            content: Lorem ipsum.
+            createdAt: 2021-07-20T17:04:00.000Z
+        lastSeen: 2021-10-06 15:00:00.000Z
+          
+    MessageSubscribe:
+      type: object
+      properties:
+        from:
+          type: string
+          format: uuid
+        content:
+          type: string
+        createdAt: 
+          type: string
+          format: ISO 8601 Date
+      example:
+        from: 5996dc45-a069-4931-9471-1130a8bc0203
+        content: Is this a message?
+        createdAt: 2021-07-15T20:30:21.379Z
+
+    MessagePublish:
+      type: object
+      properties:
+        to:
+          type: string
+          format: uuid
+        content:
+          type: string
+      example:
+        to: 5996dc45-a069-4931-9471-1130a8bc0203
+        content: I don't know man... But hey, wanna play some valorant?
+    
+    AppError:
+      type: object
+      properties:
+        code:
+          type: number
+          example: 0
+        message:
+          type: string
+          example: Internal Server Error
+        details:
+          type: string
+      required: [ code, message ]
+
+channels:
+  user/list:
+    subscribe:
+      operationId: RF024-00
+      description: Will notify the user of all currently available users for chatting
+      message:
+        payload:
+          type: array
+          items:
+            $ref: "#/components/schemas/Team"
+
+  user/connect:
+    subscribe:
+      operationId: RF025-00
+      description: Will notify all users of a new connection (not subscription, it only notifies that an user went online)
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 308f7b00-af9f-4774-8611-ed6353c69b6d
+          
+  user/disconnect:
+    subscribe:
+      operationId: RF025-01
+      description: Will notify all users of a new disconnection
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 37832b4f-0cd7-4080-9fc4-38030779619c
+  
+  user/message:
+    subscribe:
+      operationId: RF026-00
+      description: Will receive messages
+      message:
+        payload:
+          $ref: '#/components/schemas/MessageSubscribe'
+    publish:
+      operationId: RF027-00
+      description: Will send messages
+      message:
+        payload:
+          $ref: '#/components/schemas/MessagePublish'
+
+  user/message/error:
+    subscribe:
+      operationId: RF026-01
+      description: Will warn the user if there's any errors when sending a message
+      message:
+        payload:
+          $ref: "#/components/schemas/AppError"
+
+  user/message/seen:
+    publish:
+      operationId: RF040-00
+      description: Will notify the other user that all current messages were seen
+      message:
+        payload:
+          type: string
+          description: The chat id
+          format: uuid
+        example: f85bcb69-8c6e-44a4-bd60-2ab3f2634cc4
+    subscribe:
+      operationId: RF040-01
+      description: Will notify the user of the viewed messages
+      message:
+        payload:
+          type: string
+          description: The chat id
+          format: uuid
+        example: f85bcb69-8c6e-44a4-bd60-2ab3f2634cc4
+  
+  user/message/seen/error:
+    subscribe:
+      operationId: RF040-02
+      description: >
+        Possible errors:
+        1 - There is no chat with past id
+        2 - Update error
+      message:
+        payload:
+          $ref: "#/components/schemas/AppError"
+
+  user/agreement:
+    subscribe:
+      operationId: RF024-01
+      description: Will notify teams if a user enters an agreement and is no longer available for chatting
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 683710cf-a5be-4395-b775-d9656bfb87a
+
+  user/agreement/cancelled:
+    subscribe:
+      operationId: RF024-02
+      description: Will notify teams if a user exists an agreement and is available to chat again
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 683710cf-a5be-4395-b775-d9656bfb87a
+
+  user/agreement/propose:
+    subscribe:
+      operationId: RF028-00
+      description: Will receive notification if a team puts an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 683710cf-a5be-4395-b775-d9656bfb87a
+    publish:
+      operationId: RF012-00
+      description: Will request an agreement with another team
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 4ce5fb22-d3c2-44a7-b708-6646ef6c3883
+
+  user/agreement/propose/error:
+    subscribe:
+      operationId: RF028-01
+      description: >
+        Possible errors:
+        1 - There already is an agreement in order
+        2 - There is no active conversation with the mentioned team
+      message:
+        payload:
+          $ref: "#/components/schemas/AppError"
+          
+  user/agreement/reject:
+    subscribe:
+      operationId: RF029-00
+      description: Will receive notification if a team refuse an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 6b007f75-4f9b-4d52-bddf-b354cbcacf3b
+    publish:
+      operationId: RF029-01
+      description: Will refuse an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 4956ca292-c3f2-4fc7-8b9f-d7e5eb16d4c4
+
+  user/agreement/reject/error:
+    subscribe:
+      operationId: RF029-03
+      description: >
+        Possible errors:
+        1 - There is no active conversation with the mentioned team
+      message:
+        payload:
+          $ref: "#/components/schemas/AppError"
+          
+  user/agreement/accept:
+    subscribe:
+      operationId: RF030-00
+      description: Will receive notification if a team accepts an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: a562ca89-a0c6-4c93-846e-bd697de5cb6d
+    publish:
+      operationId: RF030-01
+      description: Will accept an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 8266b77b-9139-46e3-9995-48f76921d840
+
+  user/agreement/cancel:
+    subscribe:
+      operationId: RF013-00
+      description: Will receive notification if a team cancel an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: 969e181b-97d1-4c99-ae42-380d594eb8a0
+    publish:
+      operationId: RF013-01
+      description: Will cancel an agreement
+      message:
+        payload:
+          type: string
+          format: uuid
+        example: d22231ff-b8c4-4309-b5ff-fa053fc7e5a8
+
+  user/interest:
+    publish:
+      operationId: RF010 & RF011
+      description: Show interest or disinterest
+      message:
+        payload:
+          type: object
+          properties:
+            interest:
+              type: boolean
+              description: Controller to indicate interest or disinterest
+            id:
+              type: string
+              format: uuid
+        example:
+          interest: true  
+          id: eb36e13a-a31b-4911-b154-e8cd166a391f
+    subscribe:
+      operationId: RF010-01 & RF011-01
+      description: Retrieves a list of interests related to the request issuer
+      payload:
+        type: object
+        properties:
+          id:
+            type: string
+            format: uuid
+          name:
+            type: string
+          logo:
+            type: string
+            format: URL
+          course:
+            type: string
+          isMine:
+            type: boolean
+            description: >
+              Indicates whether the team is the agent or subject of the interest:
+              true - subject
+              false - agent
+      example:
+        id: 27b631b4-aa8f-4f89-87f6-9ed5e1cb6d3b
+        name: team1
+        logo: https://www.tomorrowtides.com/kepler1.html
+        course: System Dev
+        isMine: true
+
+  user/interest/error:
+    subscribe:
+      operationId: RF010-02 & RF011-02
+      description: Will warn the user if there's any errors when showing a interest
+      message:
+        payload:
+          $ref: "#/components/schemas/AppError"
+  
+  user/interest/all:
+    subscribe:
+      operationId: RF023-00
+      description: Retrieves a list of interests related to the request issuer
+      payload:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            logo:
+              type: string
+              format: URL
+            course:
+              type: string
+            isMine:
+              type: boolean
+              description: >
+                Indicates whether the team is the agent or subject of the interest:
+                true - subject
+                false - agent
+      example:
+        id: 27b631b4-aa8f-4f89-87f6-9ed5e1cb6d3b
+        name: team1
+        logo: https://www.tomorrowtides.com/kepler1.html
+        course: System Dev
+        isMine: true
+
+  user/match:
+    subscribe:
+      operationId: FUN03
+      description: Will send a message to both parties when there is a match between them both
+      message:
+        payload:
+          $ref: "#/components/schemas/Team"
